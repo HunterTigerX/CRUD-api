@@ -1,0 +1,4 @@
+[
+    { "id": 1, "username": "Student1", "age": 20, "hobbies": ["football", "chess"] },
+    { "id": 2, "username": "Reviewer1", "age": 22, "hobbies": ["basketball", "piano"] }
+]
