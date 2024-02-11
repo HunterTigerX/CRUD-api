@@ -1,13 +1,13 @@
-import path from 'path';
-import merge from 'webpack-merge';
-import HtmlWebpackPlugin from 'html-webpack-plugin';
-import CleanWebpackPlugin from 'clean-webpack-plugin';
-import Dotenv from 'dotenv-webpack';
+const path = require('path');
+const { merge } = require('webpack-merge');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const Dotenv = require('dotenv-webpack');
 
 const baseConfig = {
-    watch: true,
+    watch: false,
     entry: path.resolve(__dirname, 'src', 'server', 'server.mjs'),
-
+    target : 'node',
     mode: 'development',
     module: {
         rules: [
@@ -43,6 +43,7 @@ const baseConfig = {
         },
         modules: ['node_modules', 'bower_components', 'shared', '/shared/vendor/modules'],
         fallback: {
+            path: false,
             http: false,
             https: false,
         },
@@ -59,11 +60,12 @@ const baseConfig = {
         new CleanWebpackPlugin(),
         new Dotenv({
             path: './.env',
-        })
+        }),
     ],
 };
 
 module.exports = ({ mode }) => {
+
     const isProductionMode = mode === 'prod';
     const envConfig = isProductionMode ? require('./webpack.prod.config') : require('./webpack.dev.config');
 

@@ -1,1 +1,3 @@
-export const mode = 'production';
+module.exports = {
+    mode: 'production',
+};

@@ -1,11 +1,13 @@
 {
     "scripts": {
         "watch": "webpack --config ./webpack.config.js --env mode=dev --watch --progress",
-        "server": "nodemon --exec node -r dotenv/config ./src/server/server.mjs",
+        "server": "",
         "lint": "eslint . --ext .ts",
         "test": "jest",
-        "start:dev": "webpack --config ./webpack.config.js --env mode=dev",
-        "start:prod": "webpack --config ./webpack.config.js --env mode=prod"
+        "start:dev": "nodemon --exec node -r dotenv/config ./src/server/server.mjs core=single mode=dev",
+        "start:prod": "cross-env NODE_ENV=production webpack --config ./webpack.config.js --env mode=prod && node ./deploy/index.js core=single",
+        "start:multi": "cross-env NODE_ENV=production webpack --config ./webpack.config.js --env mode=prod && node ./deploy/index.js core=multi",
+        "start:multi2": "nodemon --exec node -r dotenv/config ./src/server/server.mjs core=multi mode=dev"
     },
     "devDependencies": {
         "@types/node": "^20.11.17",
