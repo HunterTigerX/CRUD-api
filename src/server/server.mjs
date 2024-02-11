@@ -5,9 +5,6 @@ import os from 'os';
 import db from './database.json' with { type: 'json' };
 import { generateUUID, isUUID } from './uuid.mjs';
 
-import url from 'url';
-import fs from 'fs';
-
 const args = process.argv.slice(2, 3).toString().split('=')[1];
 const port = args === 'single' ? Number(process.env.PORT) : Number(process.env.MULTIPORT);
 const host = process.env.HOST;
