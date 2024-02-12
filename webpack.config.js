@@ -6,7 +6,7 @@ const Dotenv = require('dotenv-webpack');
 
 const baseConfig = {
     watch: false,
-    entry: path.resolve(__dirname, 'src', 'server', 'server.mjs'),
+    entry: path.resolve(__dirname, 'src', 'server', 'server.ts'),
     target : 'node',
     mode: 'development',
     module: {

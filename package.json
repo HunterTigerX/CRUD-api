@@ -4,10 +4,10 @@
         "server": "",
         "lint": "eslint . --ext .ts",
         "test": "jest  --silent=false --forceExit",
-        "start:dev": "nodemon --exec node -r dotenv/config ./src/server/server.mjs core=single mode=dev",
+        "start:dev": "nodemon --exec ts-node -r dotenv/config ./src/server/server.ts --core=single --mode=dev",
         "start:prod": "cross-env NODE_ENV=production webpack --config ./webpack.config.js --env mode=prod && node ./deploy/index.js core=single",
         "start:multi": "cross-env NODE_ENV=production webpack --config ./webpack.config.js --env mode=prod && node ./deploy/index.js core=multi",
-        "start:multi2": "nodemon --exec node -r dotenv/config ./src/server/server.mjs core=multi mode=dev"
+        "start:multidev": "nodemon --exec ts-node -r dotenv/config ./src/server/server.ts core=multi mode=dev"
     },
     "devDependencies": {
         "@types/jest": "^29.5.12",

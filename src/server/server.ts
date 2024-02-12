@@ -1,24 +1,26 @@
 import http from 'http';
-import path from 'path';
 import cluster from 'cluster';
 import os from 'os';
-import db from './database.json' with { type: 'json' };
-import { generateUUID, isUUID } from './uuid.mjs';
+import database from './database.json';
+import { generateUUID, isUUID } from './uuid';
+import { IUserList, IUserBodyFull, IUserBody } from './interfaces';
 
+const db = database as IUserList;
 const args = process.argv.slice(2, 3).toString().split('=')[1];
 const port = args === 'single' ? Number(process.env.PORT) : Number(process.env.MULTIPORT);
 const host = process.env.HOST;
 
 const numCPUs = os.availableParallelism();
-const separator = path.sep;
+const separator = '/';
 let nextWorkerIndex = 0;
-const readyWorkers = [];
+const readyWorkers: any[] = [];
 
 const errorInvalidIdFormat = JSON.stringify({
     message: 'Invalid userId (not in uuid format)',
 });
 const errorInvalidData = JSON.stringify({
-    message: "Invalid data in request. Probably you are using invalid data type for object key's value",
+    message:
+        "Invalid data in request. Probably you are missing required fields or using invalid data type for object key's value or have extra fields",
 });
 const errorBadBody = JSON.stringify({
     message: 'Your body might contain errors and cannot be converted to JSON',
@@ -27,7 +29,7 @@ const errorInvalidBody = JSON.stringify({
     message: 'Request body does not contain required fields or have extra fields',
 });
 const userIdNotProvided = JSON.stringify({
-    message: 'Your url does not contain user ID',
+    message: 'Your url does not contain user ID, so user id is invalid',
 });
 const userNotFound = JSON.stringify({
     message: 'User with this ID was not found',
@@ -39,23 +41,28 @@ const errorMissingFieldsBody = JSON.stringify({
     message: 'Your body is missing required fields',
 });
 const pageNotFoundPost = JSON.stringify({
-    message: "Resource that you requested doesn't exist. You should post to localhost:3000/api/users/",
+    message:
+        "Resource that you requested doesn't exist or you are posting to a wrong path. You should post to localhost:3000/api/users/",
+});
+const pageNotFoundDelete = JSON.stringify({
+    message:
+        "Resource that you requested doesn't exist or you are posting to a wrong path. You should post to 'localhost:3000/api/users/id' where id is UUID",
 });
 
-const requestListener = async function (req, res) {
+const requestListener = async function (req: any, res: any) {
     let data = '';
 
     await new Promise((resolve, reject) => {
-        req.on('data', (chunk) => {
+        req.on('data', (chunk: string) => {
             data += chunk;
         });
 
         req.on('end', () => {
-            resolve();
+            resolve('success');
         });
     });
 
-    async function validateRawInput(stringedBody) {
+    async function validateRawInput(stringedBody: string) {
         // Checking if User provided body that can be parsed to JSON
         try {
             JSON.parse(stringedBody);
@@ -64,7 +71,7 @@ const requestListener = async function (req, res) {
             return Promise.resolve('Invalid body');
         }
     }
-    async function validateRawBody(obj) {
+    async function validateRawBody(obj: object) {
         // Checking if provided body has all keys
         const userDbKeys = ['username', 'age', 'hobbies'];
         const rawKeys = Object.keys(obj);
@@ -72,7 +79,7 @@ const requestListener = async function (req, res) {
             rawKeys.length === userDbKeys.length && rawKeys.every((key) => userDbKeys.includes(key))
         );
     }
-    async function validateDataType(obj) {
+    async function validateDataType(obj: IUserBody) {
         let username = obj.username;
         let age = obj.age;
         let hobbies = obj.hobbies;
@@ -84,8 +91,11 @@ const requestListener = async function (req, res) {
             username = username.trim();
         }
 
-        let isUsernameCorrect = typeof username === 'string' && isNaN(username) && username.length !== 0;
-        let isUserAgeCorrect = !isNaN(age) && age !== null && age.length !== 0;
+        let isUsernameCorrect =
+            typeof username === 'string' &&
+            // && isNaN(username)
+            username.length !== 0;
+        let isUserAgeCorrect = !isNaN(Number(age)) && age !== null && age.toString.length !== 0;
         let isUserHobbiesCorrect =
             Array.isArray(hobbies) && (hobbies.every((item) => typeof item === 'string') || hobbies.length === 0);
 
@@ -93,15 +103,15 @@ const requestListener = async function (req, res) {
     }
 
     const method = req.method;
-    const requestedUrl = path.normalize(req.url); // we transform separators to a standart
-    const urlArguments = requestedUrl.split(separator); // this is our url arguments
-    if (urlArguments[urlArguments.length - 1] === '') {
-        urlArguments.pop();
-    }
-    let userId = urlArguments.length >= 4 ? urlArguments[3] : undefined;
-    let isValidPath = urlArguments[1] === 'api' && urlArguments[2] === 'users'; // we check if path is valid
-    const noArgs = urlArguments.length === 3; // We check if there were any arguments
-    const tooManyArgs = urlArguments.length > 4; // We check if there were any arguments
+
+    const parsedUrlX = new URL(`http://${host}:${port}${req.url}`);
+    const requestedUrl = parsedUrlX.pathname;
+
+    const urlArguments = requestedUrl.split(separator).filter(Boolean); // this is our url arguments
+    let userId = urlArguments.length >= 3 ? urlArguments[2] : undefined;
+    let isValidPath = urlArguments[0] === 'api' && urlArguments[1] === 'users'; // we check if path is valid
+    const noArgs = urlArguments.length === 2; // We check if there were any arguments
+    const tooManyArgs = urlArguments.length > 3; // We check if there were any arguments
 
     if (tooManyArgs) {
         // If path have too many arguments
@@ -118,8 +128,8 @@ const requestListener = async function (req, res) {
             // GET user request
             if (await isUUID(userId)) {
                 // UID has UUID format
-
-                const userExists = db.users.find((user) => user.id === userId);
+                const usersDatabase = db.users;
+                const userExists = (db as IUserList).users.find((user) => user.id === userId);
 
                 if (userExists) {
                     res.setHeader('Content-Type', 'application/json');
@@ -155,17 +165,17 @@ const requestListener = async function (req, res) {
                 // User data was correct
                 if ((await validateDataType(newUserData)) === false) {
                     res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(500);
+                    res.writeHead(400);
                     res.end(errorInvalidData);
                 } else {
                     // User data had correct data types
                     let newUsersId = await generateUUID();
-                    const userExists = db.users.find((user) => user.id === newUsersId);
+                    const userExists = (db as IUserList).users.find((user) => user.id === userId);
                     while (userExists) {
                         newUsersId = await generateUUID();
                     }
                     newUserData.age = Number(newUserData.age); // If user provided number, but in string format, we convert it to number
-                    const fullNewUser = Object.assign(newUsersId, newUserData);
+                    const fullNewUser = Object.assign(newUsersId, newUserData) as IUserBodyFull;
                     db.users.push(fullNewUser);
                     res.setHeader('Content-Type', 'application/json');
                     res.writeHead(201);
@@ -200,7 +210,6 @@ const requestListener = async function (req, res) {
                     // provided user with specified UUID exists
 
                     const newUserData = await validateRawInput(data); // We check if data can be parsed to object
-
                     if (newUserData === 'Invalid body') {
                         // New user data structure was invalid
                         res.setHeader('Content-Type', 'application/json');
@@ -212,7 +221,7 @@ const requestListener = async function (req, res) {
                         if ((await validateDataType(newUserData)) === false) {
                             // New user data has invalid format
                             res.setHeader('Content-Type', 'application/json');
-                            res.writeHead(500);
+                            res.writeHead(400);
                             res.end(errorInvalidData);
                         } else {
                             const existingId = {
@@ -291,7 +300,7 @@ const requestListener = async function (req, res) {
             // invalid path
             res.setHeader('Content-Type', 'application/json');
             res.writeHead(404);
-            res.end(pageNotFoundPost);
+            res.end(pageNotFoundDelete);
         }
     } else {
         // request is not POST or GET or PUT
@@ -309,7 +318,7 @@ if (cluster.isPrimary && port === 4000) {
             readyWorkers.push(worker); // Add worker to list after it's online
         });
 
-        worker.on('exit', (worker, code, signal) => {
+        worker.on('exit', (worker: any, code: any, signal: any) => {
             // console.log(`Worker ${worker.id} died`);
 
             const workerIndex = readyWorkers.indexOf(worker);
@@ -352,41 +361,47 @@ if (cluster.isPrimary && port === 4000) {
     const server = http.createServer(requestListener);
 
     if (port === 4000) {
-        process.on('message', (msg) => {
+        process.on('message', (msg: any) => {
             if (msg.type === 'request') {
                 msg.req.pipe(msg.res);
             }
         });
 
-        process.send({ type: 'ready' });
+        if (process && typeof process.send === 'function') {
+            process.send({ type: 'ready' });
 
-        if (cluster.worker.id !== 1) {
-            server.listen(port + cluster.worker.id - 1, () => {
-                console.log(
-                    `Server is running on http://${host}:${port + cluster.worker.id - 1} and worker ${process.pid} is working`
-                );
-            });
-        }
+            const clusterWorker = cluster.worker;
 
-        process.send({ type: 'ready' });
-
-        const readyWorkers = [];
-
-        cluster.on('message', (msg, worker) => {
-            if (msg.type === 'ready') {
-                readyWorkers.push(worker);
-                if (readyWorkers.length === numCPUs - 1) {
-                    startRoundRobin();
+            if (clusterWorker) {
+                if (clusterWorker.id !== 1) {
+                    server.listen(port + clusterWorker.id - 1, () => {
+                        console.log(
+                            `Server is running on http://${host}:${port + clusterWorker.id - 1} and worker ${process.pid} is working`
+                        );
+                    });
                 }
             }
-        });
 
-        function startRoundRobin() {
-            // setInterval(() => {
-            const worker = readyWorkers[nextWorkerIndex];
-            nextWorkerIndex = (nextWorkerIndex + 1) % readyWorkers.length;
-            worker.send('request');
-            // }, 1);
+            process.send({ type: 'ready' });
+
+            const readyWorkers: any[] = [];
+
+            function startRoundRobin() {
+                // setInterval(() => {
+                const worker = readyWorkers[nextWorkerIndex];
+                nextWorkerIndex = (nextWorkerIndex + 1) % readyWorkers.length;
+                worker.send('request');
+                // }, 1);
+            }
+
+            cluster.on('message', (msg: any, worker) => {
+                if (msg.type === 'ready') {
+                    readyWorkers.push(worker);
+                    if (readyWorkers.length === numCPUs - 1) {
+                        startRoundRobin();
+                    }
+                }
+            });
         }
     } else {
         server.listen(port, host, () => {

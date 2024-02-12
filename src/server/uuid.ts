@@ -10,7 +10,7 @@ export async function generateUUID() {
     return Promise.resolve(object);
 }
 
-export async function isUUID(userId) {
+export async function isUUID(userId: string) {
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
     return Promise.resolve(uuidRegex.test(userId));
 }
