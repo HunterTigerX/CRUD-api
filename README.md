@@ -15,6 +15,9 @@
 4. npm run test
 - This command will runn 3 tests. Tests were made for prod version, so run them after you deployed server at port 3000. But I think you can change the value of the port manually if you want to test code on other ports. Also you can either start the server, make request to create a new user to check the validity of tests.
 
+5. npm run start:multidev
+- Same as npm run start:multi, but in development mode. Not required, but was made just in case.
+
 
 - There are 4 available requests. port ":3000" may vary depending on the command you used. It's ":4000" for "npm run start:multi" and ":3000" for "npm run start:dev" and "npm run start:prod" commands.
 1. GET 
