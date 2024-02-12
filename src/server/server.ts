@@ -1,321 +1,24 @@
 import http from 'http';
 import cluster from 'cluster';
 import os from 'os';
-import database from './database.json';
-import { generateUUID, isUUID } from './uuid';
-import { IUserList, IUserBodyFull, IUserBody } from './interfaces';
+import newUserDB from './newUserDb';
+import { requestListener } from './listener';
 
-const db = database as IUserList;
 const args = process.argv.slice(2, 3).toString().split('=')[1];
 const port = args === 'single' ? Number(process.env.PORT) : Number(process.env.MULTIPORT);
 const host = process.env.HOST;
 
 const numCPUs = os.availableParallelism();
-const separator = '/';
 let nextWorkerIndex = 0;
 const readyWorkers: any[] = [];
 
-const errorInvalidIdFormat = JSON.stringify({
-    message: 'Invalid userId (not in uuid format)',
-});
-const errorInvalidData = JSON.stringify({
-    message:
-        "Invalid data in request. Probably you are missing required fields or using invalid data type for object key's value or have extra fields",
-});
-const errorBadBody = JSON.stringify({
-    message: 'Your body might contain errors and cannot be converted to JSON',
-});
-const errorInvalidBody = JSON.stringify({
-    message: 'Request body does not contain required fields or have extra fields',
-});
-const userIdNotProvided = JSON.stringify({
-    message: 'Your url does not contain user ID, so user id is invalid',
-});
-const userNotFound = JSON.stringify({
-    message: 'User with this ID was not found',
-});
-const pageNotFound = JSON.stringify({
-    message: "Resource that you requested doesn't exist",
-});
-const errorMissingFieldsBody = JSON.stringify({
-    message: 'Your body is missing required fields',
-});
-const pageNotFoundPost = JSON.stringify({
-    message:
-        "Resource that you requested doesn't exist or you are posting to a wrong path. You should post to localhost:3000/api/users/",
-});
-const pageNotFoundDelete = JSON.stringify({
-    message:
-        "Resource that you requested doesn't exist or you are posting to a wrong path. You should post to 'localhost:3000/api/users/id' where id is UUID",
-});
-
-const requestListener = async function (req: any, res: any) {
-    let data = '';
-
-    await new Promise((resolve, reject) => {
-        req.on('data', (chunk: string) => {
-            data += chunk;
-        });
-
-        req.on('end', () => {
-            resolve('success');
-        });
-    });
-
-    async function validateRawInput(stringedBody: string) {
-        // Checking if User provided body that can be parsed to JSON
-        try {
-            JSON.parse(stringedBody);
-            return Promise.resolve(JSON.parse(stringedBody));
-        } catch (err) {
-            return Promise.resolve('Invalid body');
-        }
-    }
-    async function validateRawBody(obj: object) {
-        // Checking if provided body has all keys
-        const userDbKeys = ['username', 'age', 'hobbies'];
-        const rawKeys = Object.keys(obj);
-        return Promise.resolve(
-            rawKeys.length === userDbKeys.length && rawKeys.every((key) => userDbKeys.includes(key))
-        );
-    }
-    async function validateDataType(obj: IUserBody) {
-        let username = obj.username;
-        let age = obj.age;
-        let hobbies = obj.hobbies;
-
-        if (typeof age === 'string') {
-            age = age.trim();
-        }
-        if (typeof username === 'string') {
-            username = username.trim();
-        }
-
-        let isUsernameCorrect =
-            typeof username === 'string' &&
-            // && isNaN(username)
-            username.length !== 0;
-        let isUserAgeCorrect = !isNaN(Number(age)) && age !== null && age.toString.length !== 0;
-        let isUserHobbiesCorrect =
-            Array.isArray(hobbies) && (hobbies.every((item) => typeof item === 'string') || hobbies.length === 0);
-
-        return Promise.resolve(isUsernameCorrect && isUserAgeCorrect && isUserHobbiesCorrect);
-    }
-
-    const method = req.method;
-
-    const parsedUrlX = new URL(`http://${host}:${port}${req.url}`);
-    const requestedUrl = parsedUrlX.pathname;
-
-    const urlArguments = requestedUrl.split(separator).filter(Boolean); // this is our url arguments
-    let userId = urlArguments.length >= 3 ? urlArguments[2] : undefined;
-    let isValidPath = urlArguments[0] === 'api' && urlArguments[1] === 'users'; // we check if path is valid
-    const noArgs = urlArguments.length === 2; // We check if there were any arguments
-    const tooManyArgs = urlArguments.length > 3; // We check if there were any arguments
-
-    if (tooManyArgs) {
-        // If path have too many arguments
-        res.setHeader('Content-Type', 'application/json');
-        res.writeHead(404);
-        res.end(pageNotFound);
-    } else if (method === 'GET') {
-        if (isValidPath && noArgs) {
-            // GET all users request
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(200);
-            res.end(JSON.stringify(db.users));
-        } else if (isValidPath && userId) {
-            // GET user request
-            if (await isUUID(userId)) {
-                // UID has UUID format
-                const usersDatabase = db.users;
-                const userExists = (db as IUserList).users.find((user) => user.id === userId);
-
-                if (userExists) {
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(200);
-                    res.end(JSON.stringify(userExists));
-                } else {
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(404);
-                    res.end(userNotFound);
-                }
-            } else {
-                // UID has wrong format
-                res.setHeader('Content-Type', 'application/json');
-                res.writeHead(400);
-                res.end(errorInvalidIdFormat);
-            }
-        } else {
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(404);
-            res.end(pageNotFound);
-        }
-    } else if (method === 'POST') {
-        if (isValidPath && noArgs) {
-            // POST request url was correct
-            const newUserData = await validateRawInput(data); // We check if data can be parsed to object
-
-            if (newUserData === 'Invalid body') {
-                // User data structure was invalid
-                res.setHeader('Content-Type', 'application/json');
-                res.writeHead(500);
-                res.end(errorBadBody);
-            } else if (await validateRawBody(newUserData)) {
-                // User data was correct
-                if ((await validateDataType(newUserData)) === false) {
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(400);
-                    res.end(errorInvalidData);
-                } else {
-                    // User data had correct data types
-                    let newUsersId = await generateUUID();
-                    const userExists = (db as IUserList).users.find((user) => user.id === userId);
-                    while (userExists) {
-                        newUsersId = await generateUUID();
-                    }
-                    newUserData.age = Number(newUserData.age); // If user provided number, but in string format, we convert it to number
-                    const fullNewUser = Object.assign(newUsersId, newUserData) as IUserBodyFull;
-                    db.users.push(fullNewUser);
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(201);
-                    res.end(JSON.stringify(fullNewUser));
-                }
-            } else {
-                // User data was invalid
-                res.setHeader('Content-Type', 'application/json');
-                res.writeHead(400);
-                res.end(errorMissingFieldsBody);
-            }
-        } else {
-            // POST request url was invalid
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(404);
-            res.end(pageNotFoundPost);
-        }
-    } else if (method === 'PUT') {
-        if (isValidPath && noArgs) {
-            // No userId was provided
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(400);
-            res.end(userIdNotProvided);
-        } else if (isValidPath && userId) {
-            // userId was provided
-            if (await isUUID(userId)) {
-                // UID has UUID format
-
-                const userExists = db.users.find((user) => user.id === userId);
-
-                if (userExists) {
-                    // provided user with specified UUID exists
-
-                    const newUserData = await validateRawInput(data); // We check if data can be parsed to object
-                    if (newUserData === 'Invalid body') {
-                        // New user data structure was invalid
-                        res.setHeader('Content-Type', 'application/json');
-                        res.writeHead(500);
-                        res.end(errorBadBody);
-                    } else if (await validateRawBody(newUserData)) {
-                        // Provided new user body was correct
-
-                        if ((await validateDataType(newUserData)) === false) {
-                            // New user data has invalid format
-                            res.setHeader('Content-Type', 'application/json');
-                            res.writeHead(400);
-                            res.end(errorInvalidData);
-                        } else {
-                            const existingId = {
-                                id: userExists.id,
-                            };
-                            const editedUser = Object.assign(existingId, newUserData);
-                            db.users.map((user, index) => {
-                                if (user.id === userId) {
-                                    db.users[index] = editedUser;
-                                }
-                            });
-                            res.setHeader('Content-Type', 'application/json');
-                            res.writeHead(200);
-                            res.end(JSON.stringify(editedUser));
-                        }
-                    } else {
-                        // User data was invalid
-                        res.setHeader('Content-Type', 'application/json');
-                        res.writeHead(400);
-                        res.end(errorInvalidBody);
-                    }
-                } else {
-                    // provided UUID do not exist
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(404);
-                    res.end(userNotFound);
-                }
-            } else {
-                // UID is not in UUID format
-                res.setHeader('Content-Type', 'application/json');
-                res.writeHead(400);
-                res.end(errorInvalidIdFormat);
-            }
-        } else {
-            // invalid path
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(404);
-            res.end(pageNotFoundPost);
-        }
-    } else if (method === 'DELETE') {
-        if (isValidPath && noArgs) {
-            // No userId was provided
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(400);
-            res.end(userIdNotProvided);
-        } else if (isValidPath && userId) {
-            // userId was provided
-            if (await isUUID(userId)) {
-                // UID has UUID format
-
-                const userExists = db.users.find((user) => user.id === userId);
-
-                if (userExists) {
-                    // provided user with specified UUID exists
-
-                    db.users.map((user, index) => {
-                        if (user.id === userId) {
-                            db.users.splice(index, 1);
-                        }
-                    });
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(204);
-                    res.end();
-                } else {
-                    res.setHeader('Content-Type', 'application/json');
-                    res.writeHead(404);
-                    res.end(userNotFound);
-                }
-            } else {
-                // UID is not in UUID format
-                res.setHeader('Content-Type', 'application/json');
-                res.writeHead(400);
-                res.end(errorInvalidIdFormat);
-            }
-        } else {
-            // invalid path
-            res.setHeader('Content-Type', 'application/json');
-            res.writeHead(404);
-            res.end(pageNotFoundDelete);
-        }
-    } else {
-        // request is not POST or GET or PUT
-        res.setHeader('Content-Type', 'application/json');
-        res.writeHead(404);
-        res.end(pageNotFound);
-    }
-};
+export const newDb = new newUserDB(port);
 
 if (cluster.isPrimary && port === 4000) {
     for (let i = 0; i < numCPUs; i += 1) {
         const worker = cluster.fork();
         worker.on('online', () => {
-            // console.log(`Worker ${worker.id}, is online`);
-            readyWorkers.push(worker); // Add worker to list after it's online
+            readyWorkers.push(worker);
         });
 
         worker.on('exit', (worker: any, code: any, signal: any) => {
@@ -327,31 +30,47 @@ if (cluster.isPrimary && port === 4000) {
             }
         });
     }
+    cluster.on('exit', () => {
+        cluster.fork();
+    });
 
-    const loadMasterServer = http.createServer(requestListener);
-    loadMasterServer.on('request', (req, res) => {
+    const loadMasterServer = http.createServer(async (req, res) => {
+
         const parsedUrl = new URL(`http://${host}:${port}${req.url}`);
         const usersPath = parsedUrl.pathname;
 
         const worker = readyWorkers[nextWorkerIndex];
-
         nextWorkerIndex = (nextWorkerIndex + 1) % readyWorkers.length;
-
         const newPort = port + worker.id;
+
         const options = {
             hostname: 'localhost',
-            port: newPort - 1,
+            port: newPort,
             path: usersPath,
             method: req.method,
             headers: req.headers,
         };
 
         const proxyReq = http.request(options, (proxyRes) => {
-            // res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            res.writeHead(proxyRes.statusCode as number, proxyRes.headers);
             proxyRes.pipe(res);
         });
 
         req.pipe(proxyReq);
+
+        proxyReq.on('error', (err) => {
+            console.error('Error forwarding request:', err);
+            res.statusCode = 500;
+            res.end('Internal server error');
+        });
+    });
+
+    cluster.on('message', (requestMessage: any, worker) => {
+        if (worker.type === 'updateDataInDb') {
+            for (const id in cluster.workers) {
+                cluster.workers[id]?.send(worker.body);
+            }
+        }
     });
 
     loadMasterServer.listen(port, () => {
@@ -361,15 +80,11 @@ if (cluster.isPrimary && port === 4000) {
     const server = http.createServer(requestListener);
 
     if (port === 4000) {
-        process.on('message', (msg: any) => {
-            if (msg.type === 'request') {
-                msg.req.pipe(msg.res);
-            }
+        process.on('message', (newUserData: any) => {
+            newDb.updateDb(newUserData);
         });
 
         if (process && typeof process.send === 'function') {
-            process.send({ type: 'ready' });
-
             const clusterWorker = cluster.worker;
 
             if (clusterWorker) {
@@ -381,27 +96,6 @@ if (cluster.isPrimary && port === 4000) {
                     });
                 }
             }
-
-            process.send({ type: 'ready' });
-
-            const readyWorkers: any[] = [];
-
-            function startRoundRobin() {
-                // setInterval(() => {
-                const worker = readyWorkers[nextWorkerIndex];
-                nextWorkerIndex = (nextWorkerIndex + 1) % readyWorkers.length;
-                worker.send('request');
-                // }, 1);
-            }
-
-            cluster.on('message', (msg: any, worker) => {
-                if (msg.type === 'ready') {
-                    readyWorkers.push(worker);
-                    if (readyWorkers.length === numCPUs - 1) {
-                        startRoundRobin();
-                    }
-                }
-            });
         }
     } else {
         server.listen(port, host, () => {

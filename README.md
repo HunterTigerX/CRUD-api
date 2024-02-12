@@ -14,7 +14,7 @@
 - This command will start server in production mode, file index.js will be bundled in deploy forder and server will start at port 4000 with a load balancer and you will be able to send requests to different ports depending on you CPU cores count. You can check all available ports in console after starting the server.
 
 4. npm run test
-- This command will runn 3 tests. Tests were made for prod version, so run them after you deployed server at port 3000. But I think you can change the value of the port manually if you want to test code on other ports. Also you can either start the server, make request to create a new user to theck the validity of tests or you can put data from "database template.json" into "database.json" file in ./src/server and check test with provided data.
+- This command will runn 3 tests. Tests were made for prod version, so run them after you deployed server at port 3000. But I think you can change the value of the port manually if you want to test code on other ports. Also you can either start the server, make request to create a new user to check the validity of tests.
 
 
 - There are 4 available requests. port ":3000" may vary depending on the command you used. It's ":4000" for "npm run start:multi" and ":3000" for "npm run start:dev" and "npm run start:prod" commands.
